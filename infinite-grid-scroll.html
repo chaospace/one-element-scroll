@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="https://use.typekit.net/klj1rev.css" />
+    <link rel="stylesheet" type="text/css" href="css/infinite-grid.css" />
+    <title>infinite-grid-scroll</title>
+    <style></style>
+    <script>
+      document.documentElement.className = "js";
+    </script>
+  </head>
+  <body>
+    <main id="main">
+      <header class="frame">
+        <div class="frame-left">
+          <h1>
+            <a href="https://tympanus.net/codrops/demos/?tag=Infinite"
+              >#Infinite Layers Grid</a
+            >
+          </h1>
+          <a class="frame__back" href="https://tympanus.net/codrops/?p="
+            >Article</a
+          >
+          <a class="frame__archive" href="https://tympanus.net/codrops/demos/"
+            >All demos</a
+          >
+          <a
+            class="frame__github"
+            href="https://github.com/JorgeCapillo/infinite-layers-grid"
+            >GitHub</a
+          >
+        </div>
+        <div id="cdawrap" class="cdawrap">
+          <a
+            href="http://www.guidde.com?utm_campaign=codrops&amp;utm_source=newsletter&amp;utm_medium=email&amp;utm_term=1024&amp;utm_content=demo_link"
+            class="cda-sponsor-link"
+            target="_blank"
+            rel="nofollow noopener"
+            >Create stunning AI-generated video guides in seconds. Try Guidde's
+            free demo now!</a
+          >
+        </div>
+      </header>
+      <section id="hero">
+        <div id="images"></div>
+      </section>
+    </main>
+    <script src="js/gsap.min.js"></script>
+    <script src="js/ScrollTrigger.min.js"></script>
+    <script src="js/Flip.min.js"></script>
+    <script src="js/imagesloaded.pkgd.min.js"></script>
+    <script src="js/lenis.min.js"></script>
+    <script src="js/smoothscroll.js"></script>
+    <script>
+      // grid class
+      class InfiniteGrid {
+        constructor({ el, sources, data, originalSize }) {
+          this.container = el;
+          this.sources = sources;
+          this.data = data;
+          this.originalSize = originalSize;
+          this.isDragging = false;
+          this.scroll = {
+            ease: 0.06,
+            current: { x: 0, y: 0 },
+            target: { x: 0, y: 0 },
+            last: { x: 0, y: 0 },
+            delta: { x: { c: 0, t: 0 }, y: { c: 0, t: 0 } },
+          };
+          this.drag = { startX: 0, startY: 0, scrollX: 0, scrollY: 0 };
+          this.mouse = {
+            x: { t: 0.5, c: 0.5 },
+            y: { t: 0.5, c: 0.5 },
+            press: { t: 0, c: 0 },
+          };
+          this.items = [];
+
+          this.onResize = this.onResize.bind(this);
+          this.onWheel = this.onWheel.bind(this);
+          this.onMouseMove = this.onMouseMove.bind(this);
+          this.onMouseDown = this.onMouseDown.bind(this);
+          this.onMouseUp = this.onMouseUp.bind(this);
+          this.render = this.render.bind(this);
+
+          window.addEventListener("resize", this.onResize);
+          window.addEventListener("wheel", this.onWheel, { passive: false });
+          window.addEventListener("mousemove", this.onMouseMove);
+          this.container.addEventListener("mousedown", this.onMouseDown);
+          window.addEventListener("mouseup", this.onMouseUp);
+
+          this.observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              entry.target.classList.toggle("visible", entry.isIntersecting);
+            });
+          });
+          this.onResize();
+          this.render();
+          this.initIntro();
+          this.intro();
+        }
+
+        onResize() {
+          this.winW = window.innerWidth;
+          this.winH = window.innerHeight;
+          this.tileSize = {
+            w: this.winW,
+            h: this.winW * (this.originalSize.h / this.originalSize.w),
+          };
+          this.scroll.current = { x: 0, y: 0 };
+          this.scroll.target = { x: 0, y: 0 };
+          this.scroll.last = { x: 0, y: 0 };
+          this.container.innerHTML = "";
+
+          const baseItems = this.data.map((d, i) => {
+            const scaleX = this.tileSize.w / this.originalSize.w;
+            const scaleY = this.tileSize.h / this.originalSize.h;
+            const source = this.sources[i % this.sources.length];
+            return {
+              src: source.src,
+              caption: source.caption,
+              x: d.x * scaleX,
+              y: d.y * scaleY,
+              w: d.w * scaleX,
+              h: d.h * scaleY,
+            };
+          });
+
+          this.items = [];
+
+          const repsX = [0, this.tileSize.w];
+          const repsY = [0, this.tileSize.h];
+
+          baseItems.forEach((base) => {
+            repsX.forEach((offsetX) => {
+              repsY.forEach((offsetY) => {
+                const el = document.createElement("div");
+                el.classList.add("item");
+                el.style.width = `${base.w}px`;
+
+                const wrapper = document.createElement("div");
+                wrapper.classList.add("item-wrapper");
+                el.appendChild(wrapper);
+
+                const itemImage = document.createElement("div");
+                itemImage.classList.add("item-image");
+                itemImage.style.width = `${base.w}px`;
+                itemImage.style.height = `${base.h}px`;
+                wrapper.appendChild(itemImage);
+
+                const img = new Image();
+                img.src = base.src;
+                itemImage.appendChild(img);
+
+                const caption = document.createElement("small");
+                caption.innerHTML = base.caption;
+
+                wrapper.appendChild(caption);
+                this.container.appendChild(el);
+                this.observer.observe(caption);
+                this.items.push({
+                  el,
+                  container: itemImage,
+                  wrapper,
+                  img,
+                  x: base.x + offsetX,
+                  y: base.y + offsetY,
+                  w: base.w,
+                  h: base.h,
+                  extraX: 0,
+                  extraY: 0,
+                  rect: el.getBoundingClientRect(),
+                  ease: Math.random() * 0.5 + 0.5,
+                });
+              });
+            });
+          });
+
+          this.tileSize.w *= 2;
+          this.tileSize.h *= 2;
+
+          this.scroll.current.x =
+            this.scroll.target.x =
+            this.scroll.last.x =
+              -this.winW * 0.1;
+          this.scroll.current.y =
+            this.scroll.target.y =
+            this.scroll.last.y =
+              -this.winH * 0.1;
+        }
+
+        initIntro() {
+          this.introItems = [
+            ...this.container.querySelectorAll(".item-wrapper"),
+          ].filter((item) => {
+            const rect = item.getBoundingClientRect();
+            return (
+              rect.x > -rect.width &&
+              rect.x < window.innerWidth + rect.width &&
+              rect.y > -rect.height &&
+              rect.y < window.innerHeight + rect.height
+            );
+          });
+
+          this.introItems.forEach((item) => {
+            const rect = item.getBoundingClientRect();
+            const x = -rect.x + (window.innerWidth - rect.width) * 0.5;
+            const y = -rect.y + (window.innerHeight - rect.height) * 0.5;
+            gsap.set(item, { x, y });
+          });
+        }
+
+        intro() {
+          gsap.to(this.introItems.reverse(), {
+            duration: 2,
+            ease: "expo.inOut",
+            x: 0,
+            y: 0,
+            stagger: 0.05,
+          });
+        }
+
+        onWheel(e) {
+          e.preventDefault();
+          const factor = 0.4;
+          this.scroll.target.x -= e.deltaX * factor;
+          this.scroll.target.y -= e.deltaY * factor;
+        }
+
+        onMouseDown(e) {
+          e.preventDefault();
+          this.isDragging = true;
+          document.documentElement.classList.add("dragging");
+          this.mouse.press.t = 1;
+          this.drag.startX = e.clientX;
+          this.drag.startY = e.clientY;
+          this.drag.scrollX = this.scroll.target.x;
+          this.drag.scrollY = this.scroll.target.y;
+        }
+
+        onMouseUp(e) {
+          this.isDragging = false;
+          document.documentElement.classList.remove("dragging");
+          this.mouse.press.t = 0;
+        }
+
+        onMouseMove(e) {
+          this.mouse.x.t = e.clientX / this.winW;
+          this.mouse.y.t = e.clientY / this.winH;
+          if (this.isDragging) {
+            const dx = e.clientX - this.drag.startX;
+            const dy = e.clientY - this.drag.startY;
+            this.scroll.target.x = this.drag.scrollX + dx;
+            this.scroll.target.y = this.drag.scrollY + dy;
+          }
+        }
+
+        render() {
+          this.scroll.current.x +=
+            (this.scroll.target.x - this.scroll.current.x) * this.scroll.ease;
+          this.scroll.current.y +=
+            (this.scroll.target.y - this.scroll.current.y) * this.scroll.ease;
+
+          this.scroll.delta.x.t = this.scroll.current.x - this.scroll.last.x;
+          this.scroll.delta.y.t = this.scroll.current.y - this.scroll.last.y;
+
+          this.scroll.delta.x.c +=
+            (this.scroll.delta.x.t - this.scroll.delta.x.c) * 0.04;
+          this.scroll.delta.y.c +=
+            (this.scroll.delta.y.t - this.scroll.delta.y.c) * 0.04;
+
+          this.mouse.x.c += (this.mouse.x.t - this.mouse.x.c) * 0.04;
+          this.mouse.y.c += (this.mouse.y.t - this.mouse.y.c) * 0.04;
+          this.mouse.press.c +=
+            (this.mouse.press.t - this.mouse.press.c) * 0.04;
+
+          const dirX =
+            this.scroll.current.x > this.scroll.last.x ? "right" : "left";
+          const dirY =
+            this.scroll.current.y > this.scroll.last.y ? "down" : "up";
+
+          this.items.forEach((item) => {
+            const newX =
+              5 * this.scroll.delta.x.c * item.ease +
+              (this.mouse.x.c - 0.5) * item.rect.width * 0.6;
+            const newY =
+              5 * this.scroll.delta.y.c * item.ease +
+              (this.mouse.y.c - 0.5) * item.rect.height * 0.6;
+
+            const scrollX = this.scroll.current.x;
+            const scrollY = this.scroll.current.y;
+            const posX = item.x + scrollX + item.extraX + newX;
+            const posY = item.y + scrollY + item.extraY + newY;
+
+            const beforeX = posX > this.winW;
+            const afterX = posX + item.rect.width < 0;
+            if (dirX === "right" && beforeX) item.extraX -= this.tileSize.w;
+            if (dirX === "left" && afterX) item.extraX += this.tileSize.w;
+
+            const beforeY = posY > this.winH;
+            const afterY = posY + item.rect.height < 0;
+            if (dirY === "down" && beforeY) item.extraY -= this.tileSize.h;
+            if (dirY === "up" && afterY) item.extraY += this.tileSize.h;
+
+            const fx = item.x + scrollX + item.extraX + newX;
+            const fy = item.y + scrollY + item.extraY + newY;
+
+            item.el.style.transform = `translate(${fx}px, ${fy}px)`;
+            item.img.style.transform = `scale(${
+              1.2 + 0.2 * this.mouse.press.c * item.ease
+            }) translate(${-this.mouse.x.c * item.ease * 10}%, ${
+              -this.mouse.y.c * item.ease * 10
+            }%)`;
+          });
+
+          this.scroll.last.x = this.scroll.current.x;
+          this.scroll.last.y = this.scroll.current.y;
+          requestAnimationFrame(this.render);
+        }
+
+        destroy() {
+          window.removeEventListener("resize", this.onResize);
+          window.removeEventListener("wheel", this.onWheel);
+          window.removeEventListener("mousemove", this.onMouseMove);
+          this.container.removeEventListener("mousedown", this.onMouseDown);
+          window.removeEventListener("mouseup", this.onMouseUp);
+          this.observer.disconnect();
+        }
+      }
+
+      const sources = [
+        {
+          src: "/img/infinite-grid/image-1.jpg",
+          caption:
+            "30 knots <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2021",
+        },
+        {
+          src: "/img/infinite-grid/image-2.jpg",
+          caption:
+            "Sad Mis-Step <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2024",
+        },
+        {
+          src: "/img/infinite-grid/image-3.jpg",
+          caption:
+            "Mini Orange <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2014",
+        },
+        {
+          src: "/img/infinite-grid/image-4.jpg",
+          caption:
+            "After Storm <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2022",
+        },
+        {
+          src: "/img/infinite-grid/image-5.jpg",
+          caption:
+            "Untitled <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2016",
+        },
+        {
+          src: "/img/infinite-grid/image-6.jpg",
+          caption:
+            "Toilet Paper <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2022",
+        },
+        {
+          src: "/img/infinite-grid/image-7.jpg",
+          caption:
+            "Cocoa Eggplant Tomato <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2025",
+        },
+        {
+          src: "/img/infinite-grid/image-8.jpg",
+          caption:
+            "Toilet Paper <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2022",
+        },
+        {
+          src: "/img/infinite-grid/image-9.jpg",
+          caption:
+            "Production Fun Fact (Eggs) <br>12 x 16 inch C type hand print <br>Edition of 1 Plus an additional artist Proof <br>2024",
+        },
+      ];
+
+      const data = [
+        {
+          x: 71,
+          y: 58,
+          w: 400,
+          h: 270,
+        },
+        {
+          x: 211,
+          y: 255,
+          w: 540,
+          h: 360,
+        },
+        {
+          x: 631,
+          y: 158,
+          w: 400,
+          h: 270,
+        },
+        {
+          x: 1191,
+          y: 245,
+          w: 260,
+          h: 195,
+        },
+        {
+          x: 351,
+          y: 687,
+          w: 260,
+          h: 290,
+        },
+        {
+          x: 751,
+          y: 824,
+          w: 205,
+          h: 154,
+        },
+        {
+          x: 911,
+          y: 540,
+          w: 260,
+          h: 350,
+        },
+        {
+          x: 1051,
+          y: 803,
+          w: 400,
+          h: 300,
+        },
+        {
+          x: 71,
+          y: 922,
+          w: 350,
+          h: 260,
+        },
+      ];
+
+      const isTouch = () => {
+        try {
+          document.createEvent("TouchEvent");
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+
+      const onResize = () => {
+        document.documentElement.style.setProperty(
+          "--rvw",
+          `${document.documentElement.clientWidth / 100}px`
+        );
+      };
+
+      window.addEventListener("resize", onResize);
+
+      new InfiniteGrid({
+        el: document.querySelector("#images"),
+        sources,
+        data,
+        originalSize: { w: 1522, h: 1238 },
+      });
+      onResize();
+    </script>
+  </body>
+</html>
